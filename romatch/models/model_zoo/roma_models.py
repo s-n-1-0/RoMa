@@ -65,8 +65,8 @@ def roma_model_pad(
     if isinstance(upsample_res, int):
         upsample_res = (upsample_res, upsample_res)
 
-    if str(device) == "cpu":
-        amp_dtype = torch.float32
+    if str(device) == "cpu" and amp_dtype == torch.float16:
+        amp_dtype = torch.float32  # fp16 は CPU で非対応。bf16 は通す
 
     assert resolution[0] % 14 == 0, "Needs to be multiple of 14 for backbone"
     assert resolution[1] % 14 == 0, "Needs to be multiple of 14 for backbone"
@@ -246,8 +246,8 @@ def roma_model(
     if isinstance(upsample_res, int):
         upsample_res = (upsample_res, upsample_res)
 
-    if str(device) == "cpu":
-        amp_dtype = torch.float32
+    if str(device) == "cpu" and amp_dtype == torch.float16:
+        amp_dtype = torch.float32  # fp16 は CPU で非対応。bf16 は通す
 
     assert resolution[0] % 14 == 0, "Needs to be multiple of 14 for backbone"
     assert resolution[1] % 14 == 0, "Needs to be multiple of 14 for backbone"

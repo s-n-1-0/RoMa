@@ -647,8 +647,8 @@ def get_autocast_params(device=None, enabled=False, dtype=None):
         enabled = True
     else:
         out_dtype = torch.bfloat16
-        enabled = False
-        # mps is not supported
+        # cpu は bf16 autocast を有効化（mps は非対応なので無効のまま）
+        enabled = ("mps" not in str(device))
         autocast_device = "cpu"
     return autocast_device, enabled, out_dtype
 
