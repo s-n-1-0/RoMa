@@ -40,6 +40,7 @@ def roma_outdoor(
     upsample_preds=True,
     with_padding=False,
     do_compile=False,
+    dinov2_variant="vitl14",
 ):
     if torch.get_float32_matmul_precision() != "highest":
         raise RuntimeError("Float32 matmul precision must be set to highest for RoMa. See also https://github.com/Parskatt/RoMaV2/issues/35")
@@ -48,7 +49,7 @@ def roma_outdoor(
         weights = torch.hub.load_state_dict_from_url(
             weight_urls["romatch"]["outdoor"], map_location=device
         )
-    if dinov2_weights is None:
+    if dinov2_weights is None and dinov2_variant == "vitl14":
         dinov2_weights = torch.hub.load_state_dict_from_url(
             weight_urls["dinov2"], map_location=device
         )
@@ -63,6 +64,7 @@ def roma_outdoor(
         symmetric=symmetric,
         use_custom_corr=use_custom_corr,
         upsample_res=upsample_res,
+        dinov2_variant=dinov2_variant,
     )
     if do_compile:
         model.compile()

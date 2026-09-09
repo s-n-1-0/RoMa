@@ -26,12 +26,23 @@ class VGG19(nn.Module):
                 x = layer(x)
             return feats
 
+DINOV2_VARIANTS = {
+    "vits14": ("vit_small", 384, "dinov2_vits14/dinov2_vits14_pretrain.pth"),
+    "vitb14": ("vit_base", 768, "dinov2_vitb14/dinov2_vitb14_pretrain.pth"),
+    "vitl14": ("vit_large", 1024, "dinov2_vitl14/dinov2_vitl14_pretrain.pth"),
+}
+
 class CNNandDinov2(nn.Module):
-    def __init__(self, cnn_kwargs = None, amp = False, dinov2_weights = None, amp_dtype = torch.float16):
+    def __init__(self, cnn_kwargs = None, amp = False, dinov2_weights = None, amp_dtype = torch.float16,
+                 dinov2_variant = "vitl14"):
         super().__init__()
+        from . import transformer
+        ctor_name, embed_dim, weight_file = DINOV2_VARIANTS[dinov2_variant]
+        self.dinov2_embed_dim = embed_dim
         if dinov2_weights is None:
-            dinov2_weights = torch.hub.load_state_dict_from_url("https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth", map_location="cpu")
-        from .transformer import vit_large
+            dinov2_weights = torch.hub.load_state_dict_from_url(
+                f"https://dl.fbaipublicfiles.com/dinov2/{weight_file}", map_location="cpu")
+        vit_ctor = getattr(transformer, ctor_name)
         vit_kwargs = dict(img_size= 518,
             patch_size= 14,
             init_values = 1.0,
@@ -39,15 +50,15 @@ class CNNandDinov2(nn.Module):
             block_chunks = 0,
         )
 
-        dinov2_vitl14 = vit_large(**vit_kwargs).eval()
-        dinov2_vitl14.load_state_dict(dinov2_weights)
+        dinov2 = vit_ctor(**vit_kwargs).eval()
+        dinov2.load_state_dict(dinov2_weights)
         cnn_kwargs = cnn_kwargs if cnn_kwargs is not None else {}
         self.cnn = VGG19(**cnn_kwargs)
         self.amp = amp
         self.amp_dtype = amp_dtype
         if self.amp:
-            dinov2_vitl14 = dinov2_vitl14.to(self.amp_dtype)
-        self.dinov2_vitl14 = [dinov2_vitl14] # ugly hack to not show parameters to DDP
+            dinov2 = dinov2.to(self.amp_dtype)
+        self.dinov2_vitl14 = [dinov2] # ugly hack to not show parameters to DDP
     
     
     def train(self, mode: bool = True):
@@ -62,7 +73,7 @@ class CNNandDinov2(nn.Module):
                 if self.dinov2_vitl14[0].device != x.device:
                     self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
                 dinov2_features_16 = self.dinov2_vitl14[0].forward_features(x.to(self.amp_dtype))
-                features_16 = dinov2_features_16['x_norm_patchtokens'].permute(0,2,1).reshape(B,1024,H//14, W//14)
+                features_16 = dinov2_features_16['x_norm_patchtokens'].permute(0,2,1).reshape(B,self.dinov2_embed_dim,H//14, W//14)
                 del dinov2_features_16
                 feature_pyramid[16] = features_16
         return feature_pyramid

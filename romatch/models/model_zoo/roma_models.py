@@ -55,6 +55,7 @@ def roma_model_pad(
     sample_mode="threshold_balanced",
     attenuate_cert = True,
     refiner_channels= [1384, 1144, 576, 144, 24],
+    dinov2_variant="vitl14",
     **kwargs,
 ):
     if sys.platform != "linux":
@@ -166,7 +167,8 @@ def roma_model_pad(
         no_cov=no_cov,
     )
     gps = nn.ModuleDict({"16": gp16})
-    proj16 = nn.Sequential(nn.Conv2d(1024, 512, 1, 1), nn.BatchNorm2d(512))
+    dino_dim = {"vits14": 384, "vitb14": 768, "vitl14": 1024}[dinov2_variant]
+    proj16 = nn.Sequential(nn.Conv2d(dino_dim, 512, 1, 1), nn.BatchNorm2d(512))
     proj8 = nn.Sequential(nn.Conv2d(512, 512, 1, 1), nn.BatchNorm2d(512))
     proj4 = nn.Sequential(nn.Conv2d(256, 256, 1, 1), nn.BatchNorm2d(256))
     proj2 = nn.Sequential(nn.Conv2d(128, 64, 1, 1), nn.BatchNorm2d(64))
@@ -198,6 +200,7 @@ def roma_model_pad(
         amp=True,
         dinov2_weights=dinov2_weights,
         amp_dtype=amp_dtype,
+        dinov2_variant=dinov2_variant,
     )
     h, w = resolution
     
@@ -218,8 +221,14 @@ def roma_model_pad(
         state_dict_pad = matcher.state_dict()
         weights = pad_refiner_state_dict(weights,state_dict_pad)
         del state_dict_pad
+        if dinov2_variant != "vitl14":
+            # proj16 は backbone の embed_dim で形が変わる。事前学習の proj16 は捨て新規初期化のまま学習する
+            weights = {k: v for k, v in weights.items() if not k.startswith("decoder.proj.16.")}
 
-    matcher.load_state_dict(weights)
+    if weights is not None and dinov2_variant != "vitl14":
+        matcher.load_state_dict(weights, strict=False)
+    else:
+        matcher.load_state_dict(weights)
     return matcher
 
 
@@ -236,6 +245,7 @@ def roma_model(
     sample_thresh=0.05,
     sample_mode="threshold_balanced",
     attenuate_cert = True,
+    dinov2_variant="vitl14",
     **kwargs,
 ):
     if sys.platform != "linux":
@@ -347,7 +357,8 @@ def roma_model(
         no_cov=no_cov,
     )
     gps = nn.ModuleDict({"16": gp16})
-    proj16 = nn.Sequential(nn.Conv2d(1024, 512, 1, 1), nn.BatchNorm2d(512))
+    dino_dim = {"vits14": 384, "vitb14": 768, "vitl14": 1024}[dinov2_variant]
+    proj16 = nn.Sequential(nn.Conv2d(dino_dim, 512, 1, 1), nn.BatchNorm2d(512))
     proj8 = nn.Sequential(nn.Conv2d(512, 512, 1, 1), nn.BatchNorm2d(512))
     proj4 = nn.Sequential(nn.Conv2d(256, 256, 1, 1), nn.BatchNorm2d(256))
     proj2 = nn.Sequential(nn.Conv2d(128, 64, 1, 1), nn.BatchNorm2d(64))
@@ -379,6 +390,7 @@ def roma_model(
         amp=True,
         dinov2_weights=dinov2_weights,
         amp_dtype=amp_dtype,
+        dinov2_variant=dinov2_variant,
     )
     h, w = resolution
     
@@ -395,5 +407,10 @@ def roma_model(
         sample_thresh=sample_thresh,
         **kwargs,
     ).to(device)
-    matcher.load_state_dict(weights)
+    if weights is not None and dinov2_variant != "vitl14":
+        # proj16 は backbone の embed_dim で形が変わる。事前学習の proj16 は捨て新規初期化のまま学習する
+        weights = {k: v for k, v in weights.items() if not k.startswith("decoder.proj.16.")}
+        matcher.load_state_dict(weights, strict=False)
+    else:
+        matcher.load_state_dict(weights)
     return matcher
