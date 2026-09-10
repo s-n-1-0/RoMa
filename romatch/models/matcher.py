@@ -517,15 +517,18 @@ class Decoder(nn.Module):
                     "flow": flow,
                 }
             )
-            if new_scale != "1":
+            _idx = all_scales.index(new_scale)
+            if _idx + 1 < len(all_scales):
+                # 次スケールの解像度へ補間する。ins//2（連続半減）決め打ちだと 8/2 を飛ばすと壊れる。
+                _next_size = sizes[int(all_scales[_idx + 1])]
                 flow = F.interpolate(
                     flow,
-                    size=sizes[ins // 2],
+                    size=_next_size,
                     mode=self.flow_upsample_mode,
                 )
                 certainty = F.interpolate(
                     certainty,
-                    size=sizes[ins // 2],
+                    size=_next_size,
                     mode=self.flow_upsample_mode,
                 )
                 if self.detach:

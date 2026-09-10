@@ -170,15 +170,13 @@ def roma_model_pad(
     dino_dim = {"vits14": 384, "vitb14": 768, "vitl14": 1024}[dinov2_variant]
     proj16 = nn.Sequential(nn.Conv2d(dino_dim, 512, 1, 1), nn.BatchNorm2d(512))
     proj8 = nn.Sequential(nn.Conv2d(512, 512, 1, 1), nn.BatchNorm2d(512))
-    proj4 = nn.Sequential(nn.Conv2d(256, 256, 1, 1), nn.BatchNorm2d(256))
+    proj4 = nn.Sequential(nn.Conv2d(256, 64, 1, 1), nn.BatchNorm2d(64))
     proj2 = nn.Sequential(nn.Conv2d(128, 64, 1, 1), nn.BatchNorm2d(64))
     proj1 = nn.Sequential(nn.Conv2d(64, 9, 1, 1), nn.BatchNorm2d(9))
     proj = nn.ModuleDict(
         {
             "16": proj16,
-            "8": proj8,
             "4": proj4,
-            "2": proj2,
             "1": proj1,
         }
     )
@@ -190,7 +188,7 @@ def roma_model_pad(
         proj,
         conv_refiner,
         detach=True,
-        scales=["16", "8", "4", "2", "1"],
+        scales=["16", "4", "1"],
         displacement_dropout_p=displacement_dropout_p,
         gm_warp_dropout_p=gm_warp_dropout_p,
     )
@@ -304,6 +302,7 @@ def roma_model(
         use_custom_corr=use_custom_corr,
     )
 
+    # slim-refiner: stride 8/2 を削除し、16/4 の hidden を絞る（in_dim は入力構成で決まるので据え置き）。
     conv_refiner = nn.ModuleDict(
         {
             "16": partial_conv_refiner(
@@ -313,29 +312,15 @@ def roma_model(
                 displacement_emb_dim=128,
                 local_corr_radius=7,
             ),
-            "8": partial_conv_refiner(
-                2 * 512 + 64 + (2 * 3 + 1) ** 2,
-                2 * 512 + 64 + (2 * 3 + 1) ** 2,
-                2 + 1,
-                displacement_emb_dim=64,
-                local_corr_radius=3,
-            ),
             "4": partial_conv_refiner(
-                2 * 256 + 32 + (2 * 2 + 1) ** 2,
-                2 * 256 + 32 + (2 * 2 + 1) ** 2,
-                2 + 1,
-                displacement_emb_dim=32,
-                local_corr_radius=2,
-            ),
-            "2": partial_conv_refiner(
                 2 * 64 + 16,
-                128 + 16,
+                2 * 64 + 16,
                 2 + 1,
                 displacement_emb_dim=16,
             ),
             "1": partial_conv_refiner(
                 2 * 9 + 6,
-                24,
+                2 * 9 + 6,
                 2 + 1,
                 displacement_emb_dim=6,
             ),
@@ -360,15 +345,13 @@ def roma_model(
     dino_dim = {"vits14": 384, "vitb14": 768, "vitl14": 1024}[dinov2_variant]
     proj16 = nn.Sequential(nn.Conv2d(dino_dim, 512, 1, 1), nn.BatchNorm2d(512))
     proj8 = nn.Sequential(nn.Conv2d(512, 512, 1, 1), nn.BatchNorm2d(512))
-    proj4 = nn.Sequential(nn.Conv2d(256, 256, 1, 1), nn.BatchNorm2d(256))
+    proj4 = nn.Sequential(nn.Conv2d(256, 64, 1, 1), nn.BatchNorm2d(64))
     proj2 = nn.Sequential(nn.Conv2d(128, 64, 1, 1), nn.BatchNorm2d(64))
     proj1 = nn.Sequential(nn.Conv2d(64, 9, 1, 1), nn.BatchNorm2d(9))
     proj = nn.ModuleDict(
         {
             "16": proj16,
-            "8": proj8,
             "4": proj4,
-            "2": proj2,
             "1": proj1,
         }
     )
@@ -380,7 +363,7 @@ def roma_model(
         proj,
         conv_refiner,
         detach=True,
-        scales=["16", "8", "4", "2", "1"],
+        scales=["16", "4", "1"],
         displacement_dropout_p=displacement_dropout_p,
         gm_warp_dropout_p=gm_warp_dropout_p,
     )
@@ -407,10 +390,9 @@ def roma_model(
         sample_thresh=sample_thresh,
         **kwargs,
     ).to(device)
-    if weights is not None and dinov2_variant != "vitl14":
-        # proj16 は backbone の embed_dim で形が変わる。事前学習の proj16 は捨て新規初期化のまま学習する
-        weights = {k: v for k, v in weights.items() if not k.startswith("decoder.proj.16.")}
-        matcher.load_state_dict(weights, strict=False)
-    else:
-        matcher.load_state_dict(weights)
+    if weights is not None:
+        # backbone 変更や slim-refiner で形が変わった層は事前学習が合わないので、形が一致する重みだけ入れる。
+        msd = matcher.state_dict()
+        weights = {k: v for k, v in weights.items() if k in msd and v.shape == msd[k].shape}
+    matcher.load_state_dict(weights, strict=False)
     return matcher
