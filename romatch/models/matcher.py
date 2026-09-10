@@ -88,6 +88,7 @@ class ConvRefiner(nn.Module):
         self.sample_mode = sample_mode
         self.amp_dtype = amp_dtype
         self.use_custom_corr = use_custom_corr
+        self.local_corr_chunk = None  # None=全H（従来）。生成後に設定すると local correlation を H チャンク化しピークを下げる
 
     def create_block(
         self,
@@ -156,6 +157,7 @@ class ConvRefiner(nn.Module):
                             warp,
                             sample_mode=self.sample_mode,
                             use_custom_corr=self.use_custom_corr,
+                            chunk_size=self.local_corr_chunk,
                         )
                     else:
                         raise NotImplementedError(

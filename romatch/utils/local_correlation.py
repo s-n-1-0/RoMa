@@ -51,26 +51,32 @@ def shitty_native_torch_local_corr(
     padding_mode="zeros",
     sample_mode="bilinear",
     dtype=torch.float32,
+    chunk_size=None,
 ):
+    # window_feature = [c, h, w, K] がピークメモリの支配項。H を chunk_size 行ずつに分けて
+    # 都度解放することで、出力を変えずにピークだけ下げる（chunk_size=None は全Hで従来と同一）。
     corr = torch.empty((B, K, h, w), device=device, dtype=dtype)
+    cs = h if (chunk_size is None or chunk_size <= 0) else min(chunk_size, h)
     for _ in range(B):
-        with torch.no_grad():
-            local_window_coords = (
-                warp[_, :, :, None] + local_window[:, None, None]
-            ).reshape(1, h, w * K, 2)
-            window_feature = F.grid_sample(
-                feature1[_ : _ + 1],
-                local_window_coords,
-                padding_mode=padding_mode,
-                align_corners=False,
-                mode=sample_mode,  #
+        for h0 in range(0, h, cs):
+            h1 = min(h0 + cs, h)
+            with torch.no_grad():
+                local_window_coords = (
+                    warp[_, h0:h1, :, None] + local_window[:, None, None]
+                ).reshape(1, h1 - h0, w * K, 2)
+                window_feature = F.grid_sample(
+                    feature1[_ : _ + 1],
+                    local_window_coords,
+                    padding_mode=padding_mode,
+                    align_corners=False,
+                    mode=sample_mode,
+                )
+                window_feature = window_feature.reshape(c, h1 - h0, w, K)
+            corr[_, :, h0:h1] = (
+                (feature0[_, :, h0:h1, :, None] / (c**0.5) * window_feature)
+                .sum(dim=0)
+                .permute(2, 0, 1)
             )
-            window_feature = window_feature.reshape(c, h, w, K)
-        corr[_] = (
-            (feature0[_, ..., None] / (c**0.5) * window_feature)
-            .sum(dim=0)
-            .permute(2, 0, 1)
-        )
     return corr, None
 
 
@@ -83,6 +89,7 @@ def local_correlation(
     use_custom_corr: bool,
     padding_mode="zeros",
     sample_mode: Literal["bilinear", "nearest"] = "bilinear",
+    chunk_size=None,
 ):
     r = local_radius
     K = (2 * r + 1) ** 2
@@ -122,6 +129,7 @@ def local_correlation(
             padding_mode,
             sample_mode,
             dtype,
+            chunk_size,
         )
     else:
         corr, corr_coords = local_corr_wrapper(
