@@ -30,7 +30,7 @@ DINOV2_VARIANTS = {
     "vits14": ("vit_small", 384, "dinov2_vits14/dinov2_vits14_pretrain.pth"),
     "vitb14": ("vit_base", 768, "dinov2_vitb14/dinov2_vitb14_pretrain.pth"),
     "vitl14": ("vit_large", 1024, "dinov2_vitl14/dinov2_vitl14_pretrain.pth"),
-    "off": (None, 512, None),  # DINOv2 なし: coarse に VGG stride-8(512ch) を流す VGG-only 用
+    "off": (None, 512, None),  # DINOv2 なし。coarse に VGG stride-8(512ch)を流す（gp+Transformer 粗マッチャは残す）
 }
 
 class CNNandDinov2(nn.Module):
@@ -40,7 +40,7 @@ class CNNandDinov2(nn.Module):
         from . import transformer
         ctor_name, embed_dim, weight_file = DINOV2_VARIANTS[dinov2_variant]
         self.dinov2_embed_dim = embed_dim
-        self.dinov2_off = (dinov2_variant == "off")  # VGG-only: DINOv2 を読み込まず coarse を VGG で作る
+        self.dinov2_off = (dinov2_variant == "off")  # DINOv2 を読み込まず coarse を VGG で作る
         cnn_kwargs = cnn_kwargs if cnn_kwargs is not None else {}
         self.cnn = VGG19(**cnn_kwargs)
         self.amp = amp
@@ -74,7 +74,7 @@ class CNNandDinov2(nn.Module):
         feature_pyramid = self.cnn(x)
         
         if not upsample:
-            if self.dinov2_off:  # DINOv2 の代わりに VGG stride-8 特徴を coarse 解像度へ落として使う（VGG-only）
+            if self.dinov2_off:  # DINOv2 の代わりに VGG stride-8 特徴を coarse 解像度へ落として gp+Transformer に流す
                 feature_pyramid[16] = nn.functional.interpolate(
                     feature_pyramid[8], size=(H // 14, W // 14), mode="bilinear", align_corners=False)
                 return feature_pyramid

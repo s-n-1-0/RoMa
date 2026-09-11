@@ -96,8 +96,6 @@ def roma_model_pad(
         amp=True,
         pos_enc=False,
     )
-    if dinov2_variant == "off":  # VGG-only: gp/Transformer(粗マッチ)を止め refiner を placeholder flow から回す
-        coordinate_decoder._scales = []
     dw = True
     hidden_blocks = 8
     kernel_size = 5
@@ -229,6 +227,11 @@ def roma_model_pad(
         matcher.load_state_dict(weights, strict=False)
     else:
         matcher.load_state_dict(weights)
+    if dinov2_variant == "off":
+        # gp+Transformer は DINOv2 特徴で学習された粗マッチャ。VGG 特徴とは分布が合わず、事前学習重みのままだとローカル検証では学習初期に損失が発散した。VGG 用に学習し直す前提で初期化する。
+        for _m in [*matcher.decoder.gps.modules(), *matcher.decoder.embedding_decoder.modules()]:
+            if hasattr(_m, "reset_parameters"):
+                _m.reset_parameters()
     return matcher
 
 
@@ -286,8 +289,6 @@ def roma_model(
         amp=True,
         pos_enc=False,
     )
-    if dinov2_variant == "off":  # VGG-only: gp/Transformer(粗マッチ)を止め refiner を placeholder flow から回す
-        coordinate_decoder._scales = []
     dw = True
     hidden_blocks = 8
     kernel_size = 5
@@ -399,4 +400,9 @@ def roma_model(
         msd = matcher.state_dict()
         weights = {k: v for k, v in weights.items() if k in msd and v.shape == msd[k].shape}
     matcher.load_state_dict(weights, strict=False)
+    if dinov2_variant == "off":
+        # gp+Transformer は DINOv2 特徴で学習された粗マッチャ。VGG 特徴とは分布が合わず、事前学習重みのままだとローカル検証では学習初期に損失が発散した。VGG 用に学習し直す前提で初期化する。
+        for _m in [*matcher.decoder.gps.modules(), *matcher.decoder.embedding_decoder.modules()]:
+            if hasattr(_m, "reset_parameters"):
+                _m.reset_parameters()
     return matcher
