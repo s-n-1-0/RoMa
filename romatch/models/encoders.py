@@ -30,6 +30,7 @@ DINOV2_VARIANTS = {
     "vits14": ("vit_small", 384, "dinov2_vits14/dinov2_vits14_pretrain.pth"),
     "vitb14": ("vit_base", 768, "dinov2_vitb14/dinov2_vitb14_pretrain.pth"),
     "vitl14": ("vit_large", 1024, "dinov2_vitl14/dinov2_vitl14_pretrain.pth"),
+    "off": (None, 512, None),  # DINOv2 なし: coarse に VGG stride-8(512ch) を流す VGG-only 用
 }
 
 class CNNandDinov2(nn.Module):
@@ -39,6 +40,14 @@ class CNNandDinov2(nn.Module):
         from . import transformer
         ctor_name, embed_dim, weight_file = DINOV2_VARIANTS[dinov2_variant]
         self.dinov2_embed_dim = embed_dim
+        self.dinov2_off = (dinov2_variant == "off")  # VGG-only: DINOv2 を読み込まず coarse を VGG で作る
+        cnn_kwargs = cnn_kwargs if cnn_kwargs is not None else {}
+        self.cnn = VGG19(**cnn_kwargs)
+        self.amp = amp
+        self.amp_dtype = amp_dtype
+        if self.dinov2_off:
+            self.dinov2_vitl14 = [None]
+            return
         if dinov2_weights is None:
             dinov2_weights = torch.hub.load_state_dict_from_url(
                 f"https://dl.fbaipublicfiles.com/dinov2/{weight_file}", map_location="cpu")
@@ -52,10 +61,6 @@ class CNNandDinov2(nn.Module):
 
         dinov2 = vit_ctor(**vit_kwargs).eval()
         dinov2.load_state_dict(dinov2_weights)
-        cnn_kwargs = cnn_kwargs if cnn_kwargs is not None else {}
-        self.cnn = VGG19(**cnn_kwargs)
-        self.amp = amp
-        self.amp_dtype = amp_dtype
         if self.amp:
             dinov2 = dinov2.to(self.amp_dtype)
         self.dinov2_vitl14 = [dinov2] # ugly hack to not show parameters to DDP
@@ -69,6 +74,10 @@ class CNNandDinov2(nn.Module):
         feature_pyramid = self.cnn(x)
         
         if not upsample:
+            if self.dinov2_off:  # DINOv2 の代わりに VGG stride-8 特徴を coarse 解像度へ落として使う（VGG-only）
+                feature_pyramid[16] = nn.functional.interpolate(
+                    feature_pyramid[8], size=(H // 14, W // 14), mode="bilinear", align_corners=False)
+                return feature_pyramid
             with torch.no_grad():
                 if self.dinov2_vitl14[0].device != x.device:
                     self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)

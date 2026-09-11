@@ -96,6 +96,8 @@ def roma_model_pad(
         amp=True,
         pos_enc=False,
     )
+    if dinov2_variant == "off":  # VGG-only: gp/Transformer(粗マッチ)を止め refiner を placeholder flow から回す
+        coordinate_decoder._scales = []
     dw = True
     hidden_blocks = 8
     kernel_size = 5
@@ -167,7 +169,7 @@ def roma_model_pad(
         no_cov=no_cov,
     )
     gps = nn.ModuleDict({"16": gp16})
-    dino_dim = {"vits14": 384, "vitb14": 768, "vitl14": 1024}[dinov2_variant]
+    dino_dim = {"vits14": 384, "vitb14": 768, "vitl14": 1024, "off": 512}[dinov2_variant]
     proj16 = nn.Sequential(nn.Conv2d(dino_dim, 512, 1, 1), nn.BatchNorm2d(512))
     proj8 = nn.Sequential(nn.Conv2d(512, 512, 1, 1), nn.BatchNorm2d(512))
     proj4 = nn.Sequential(nn.Conv2d(256, 64, 1, 1), nn.BatchNorm2d(64))
@@ -284,6 +286,8 @@ def roma_model(
         amp=True,
         pos_enc=False,
     )
+    if dinov2_variant == "off":  # VGG-only: gp/Transformer(粗マッチ)を止め refiner を placeholder flow から回す
+        coordinate_decoder._scales = []
     dw = True
     hidden_blocks = 8
     kernel_size = 5
@@ -342,7 +346,7 @@ def roma_model(
         no_cov=no_cov,
     )
     gps = nn.ModuleDict({"16": gp16})
-    dino_dim = {"vits14": 384, "vitb14": 768, "vitl14": 1024}[dinov2_variant]
+    dino_dim = {"vits14": 384, "vitb14": 768, "vitl14": 1024, "off": 512}[dinov2_variant]
     proj16 = nn.Sequential(nn.Conv2d(dino_dim, 512, 1, 1), nn.BatchNorm2d(512))
     proj8 = nn.Sequential(nn.Conv2d(512, 512, 1, 1), nn.BatchNorm2d(512))
     proj4 = nn.Sequential(nn.Conv2d(256, 64, 1, 1), nn.BatchNorm2d(64))
